@@ -10,7 +10,7 @@ load_dotenv()  # Load environment variables from .env
 api_key = os.getenv("OPENAI_API_KEY")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "data\\marketwatch.db")
+DB_PATH = os.path.join(BASE_DIR, "data", "marketwatch.db")
 
 class VectorDBManager:
     def __init__(self, db_path: str = DB_PATH):

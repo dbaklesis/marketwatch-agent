@@ -4,7 +4,7 @@ from playwright.async_api import async_playwright
 async def fetch_product_cards(url: str, card_selector: str) -> list[dict]:
     """Extracts structured DOM elements directly per card with raw text fallback."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False, slow_mo=200)
+        browser = await p.chromium.launch(headless=True, slow_mo=200)
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             viewport={"width": 1280, "height": 800}
