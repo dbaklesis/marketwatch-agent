@@ -1,2 +1,3 @@
 data/marketwatch.db
 .env
+.agents/skills/developing-with-streamlit

@@ -20,6 +20,9 @@ class VectorDBManager:
 
     def _get_connection(self) -> sqlite3.Connection:
         """Establishes connection and loads the sqlite-vec extension."""
+        # Ensure parent directory exists before connecting
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        
         conn = sqlite3.connect(self.db_path)
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
