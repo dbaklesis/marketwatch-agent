@@ -18,7 +18,7 @@ async def run_pipeline(default_pages: int = 3):
         
         all_products = []
         # Fallback to the CLI argument if 'total_pages' isn't explicitly defined in config
-        max_pages = site.get("total_pages", default_pages)
+        max_pages = default_pages
         
         for page_num in range(1, max_pages + 1):
             target_url = site["base_url"].format(page_num)

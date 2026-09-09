@@ -1,0 +1,7 @@
+- name: "BooksToScrape"
+  base_url: "https://books.toscrape.com/catalogue/category/books_1/page-{}.html"
+  card_selector: "article.product_pod"
+
+- name: "Psichogios - Istoria"
+  base_url: "https://www.psichogios.gr/el/adults/biblia/non-fiction/istoria.html?p={}"
+  card_selector: "li.product-item"

@@ -1,3 +1,5 @@
+import os
+import yaml
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -11,19 +13,17 @@ class ProductItem(BaseModel):
 class ExtractionResult(BaseModel):
     products: List[ProductItem]
 
-# Target URLs to monitor
-TARGET_SITES = [
-    {
-        "name": "BooksToScrape",
-        "base_url": "https://books.toscrape.com/catalogue/category/books_1/page-{}.html",
-        "card_selector": "article.product_pod",
-        "total_pages": 3
-    },
-    {
-        "name": "Psichogios - Istoria",
-        # Magento appends query parameters for pagination
-        "base_url": "https://www.psichogios.gr/el/adults/biblia/non-fiction/istoria.html?p={}",
-        "card_selector": "li.product-item",
-        "total_pages": 3
-    }
-]
+# Resolve absolute path to targets.yaml in project root
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(BASE_DIR, "targets.yaml")
+
+def load_targets() -> list[dict]:
+    """Loads scraping targets dynamically from the external YAML file."""
+    if not os.path.exists(CONFIG_PATH):
+        raise FileNotFoundError(f"Configuration file not found at: {CONFIG_PATH}")
+    
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or []
+
+# Expose TARGET_SITES dynamically for main.py
+TARGET_SITES = load_targets()
