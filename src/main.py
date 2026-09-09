@@ -1,11 +1,12 @@
 import asyncio
 import time
+import argparse
 from browser import fetch_product_cards
 from parser import parse_all_cards
 from config import TARGET_SITES
 from database import VectorDBManager
 
-async def run_pipeline():
+async def run_pipeline(default_pages: int = 3):
     db = VectorDBManager()
 
     print(f"=== Starting MarketWatch Scrape Pipeline ({len(TARGET_SITES)} sites) ===")
@@ -15,18 +16,26 @@ async def run_pipeline():
         site_start_time = time.perf_counter()
         print(f"\n--- Processing: {site['name']} ---")
         
-        # 1. Fetch card text snippets via Playwright
-        cards = await fetch_product_cards(site["url"], site["card_selector"])
-        print(f"[Browser] Extracted {len(cards)} cards from DOM.")
+        all_products = []
+        # Fallback to the CLI argument if 'total_pages' isn't explicitly defined in config
+        max_pages = site.get("total_pages", default_pages)
         
-        # 2. Parse cards concurrently using local LLM
-        products = await parse_all_cards(cards, site["name"])
-        products_dict = [p.model_dump() for p in products]
-        print(f"[LLM Parser] Successfully parsed {len(products_dict)} products.")
+        for page_num in range(1, max_pages + 1):
+            target_url = site["base_url"].format(page_num)
+            print(f"[Pipeline] Scraping page {page_num}: {target_url}")
+            
+            cards = await fetch_product_cards(target_url, site["card_selector"])
+            if not cards:
+                print(f"[Pipeline] No cards found on page {page_num}. Ending pagination.")
+                break
+                
+            products = await parse_all_cards(cards, site["name"])
+            all_products.extend([p.model_dump() for p in products])
         
-        # 3. Batch insert into SQLite and sqlite-vec
-        if products_dict:
-            db.insert_products(products_dict, site["url"])
+        print(f"[LLM Parser] Successfully parsed {len(all_products)} total products across pages.")
+        
+        if all_products:
+            db.insert_products(all_products, site["base_url"].format(1))
 
         site_elapsed = time.perf_counter() - site_start_time
         minutes, seconds = divmod(site_elapsed, 60)
@@ -39,4 +48,13 @@ async def run_pipeline():
     print(f"==================================================")
 
 if __name__ == "__main__":
-    asyncio.run(run_pipeline())
+    parser = argparse.ArgumentParser(description="Run MarketWatch scraper with configurable pagination.")
+    parser.add_argument(
+        "--pages", 
+        type=int, 
+        default=3, 
+        help="Number of pages to crawl per target site (default: 3)"
+    )
+    args = parser.parse_args()
+
+    asyncio.run(run_pipeline(default_pages=args.pages))

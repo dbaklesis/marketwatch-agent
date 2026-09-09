@@ -15,12 +15,15 @@ class ExtractionResult(BaseModel):
 TARGET_SITES = [
     {
         "name": "BooksToScrape",
-        "url": "https://books.toscrape.com/catalogue/category/books_1/page-2.html",
-        "card_selector": "article.product_pod"  # Individual book container
+        "base_url": "https://books.toscrape.com/catalogue/category/books_1/page-{}.html",
+        "card_selector": "article.product_pod",
+        "total_pages": 3
     },
     {
         "name": "Psichogios - Istoria",
-        "url": "https://www.psichogios.gr/el/adults/biblia/non-fiction/istoria.html",
-        "card_selector": "li.product-item"       # Individual Magento product card
+        # Magento appends query parameters for pagination
+        "base_url": "https://www.psichogios.gr/el/adults/biblia/non-fiction/istoria.html?p={}",
+        "card_selector": "li.product-item",
+        "total_pages": 3
     }
 ]
