@@ -1,109 +1,135 @@
 import os
-import json
-import sqlite3
 import requests
 import pandas as pd
 import streamlit as st
 import sqlite_vec
 from sqlite_vec import serialize_float32
 
-# Set page layout and title
-st.set_page_config(page_title="MarketWatch Agent", page_icon="🔍", layout="wide")
+from database import VectorDBManager
+
+
+st.set_page_config(
+    page_title="MarketWatch Agent",
+    page_icon="🔍",
+    layout="wide"
+)
 
 st.title("🔍 MarketWatch Agent")
-st.caption("Search scraped products using semantic vector search with relevance filtering.")
+st.caption(
+    "Multilingual semantic search with cross-lingual query expansion "
+    "and relevance filtering."
+)
+
+# Create DB manager AFTER Streamlit has initialized
+db = VectorDBManager()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "data", "marketwatch.db")
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    #conn = sqlite3.connect(DB_PATH)
+    conn =db._get_connection()  # Use the VectorDBManager's connection method to ensure sqlite-vec is loaded
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
     conn.enable_load_extension(False)
     return conn
 
-def get_local_embedding(text: str) -> list[float]:
+def expand_query_multilingual(query: str) -> str:
+    """Uses qwen2.5:3b to expand English queries into Greek (and vice versa) for cross-lingual matching."""
     try:
         res = requests.post(
-            "http://localhost:11434/api/embeddings",
-            json={"model": "all-minilm", "prompt": text}, # Change to "nomic-embed-text" if using nomic
-            timeout=10
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "qwen2.5:3b",
+                "prompt": f"Translate and expand this search query into both English and Greek terms so it can match multilingual book titles. Return ONLY the combined search terms:\n'{query}'",
+                "stream": False
+            },
+            timeout=5
         )
-        res.raise_for_status()
-        return res.json()["embedding"]
-    except Exception as e:
-        st.error(f"Failed to generate query embedding: {e}")
-        return []
-
-def search_semantic(query: str, limit: int = 5, max_distance: float = 1.0):
-    query_vector = get_local_embedding(query)
-    if not query_vector:
-        return []
-
-    conn = get_db_connection()
-    cursor = conn.execute("""
-        WITH knn_matches AS (
-            SELECT 
-                rowid,
-                distance
-            FROM vec_products
-            WHERE embedding MATCH ? AND k = ?
-        )
-        SELECT 
-            p.id,
-            p.title,
-            p.author,
-            p.price,
-            p.in_stock,
-            p.url,
-            m.distance
-        FROM knn_matches m
-        JOIN products p ON p.id = m.rowid
-        ORDER BY m.distance ASC
-    """, (serialize_float32(query_vector), limit))
+        expanded = res.json().get("response", query).strip()
+        return f"{query} {expanded}"
+    except Exception:
+        return query
     
-    results = cursor.fetchall()
-    conn.close()
-    
-    # Filter out results that exceed the maximum distance threshold (lower distance = higher relevance)
-    filtered_results = [row for row in results if row[6] <= max_distance]
-    return filtered_results
-
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("Search Settings")
 top_k = st.sidebar.slider("Max Results Limit", min_value=1, max_value=20, value=10)
-max_dist = st.sidebar.slider("Relevance Cutoff (Max Distance)", min_value=0.1, max_value=2.0, value=1.0, step=0.05, 
-                             help="Lower values mean stricter matching. Irrelevant results above this score are dropped.")
-
+# max_dist = st.sidebar.slider(
+#     "Relevance Cutoff (Max Distance)",
+#     min_value=10.0,
+#     max_value=25.0,
+#     value=16.0,
+#     step=0.1
+# )
 # --- TABBED UI NAVIGATION ---
 tab_search, tab_debug = st.tabs(["🔍 Semantic Search", "🛠️ Database Inspector"])
 
 with tab_search:
-    query = st.text_input("Enter natural language query:", placeholder="e.g., books about history, war, or ancient civilizations")
+    query = st.text_input("Enter natural language query:", placeholder="e.g., books about war, history, or ancient civilizations")
 
-    if query:
-        with st.spinner("Searching with relevance filtering..."):
-            results = search_semantic(query, limit=top_k, max_distance=max_dist)
+if query:
+    with st.spinner("Searching..."):
+
+        # Use the user's query directly — no Qwen expansion
+        enriched_query = query
+
+        results = db.search_semantic(enriched_query, limit=top_k)
+
+        st.write("Query:", enriched_query)
+        st.write("RAW RESULTS:", results)
+
+        # Temporarily don't filter by distance
+        filtered_results = results
+
+    if filtered_results:
+        for r in filtered_results:
+            st.write(
+                f"**{r['title']}** — "
+                f"distance: {r['distance_score']}"
+            )
+    else:
+        st.warning("No results found.")
         
-        if results:
-            st.subheader(f"Found {len(results)} Relevant Matches:")
-            for row in results:
-                p_id, title, author, price, in_stock, url, distance = row
-                
-                with st.container(border=True):
-                    st.markdown(f"### {title}")
+    # if query:
+    #     with st.spinner("Translating query and searching across languages..."):
+    #         # Expand the query first using your function
+    #         #enriched_query = expand_query_multilingual(query)
+    #         enriched_query = query
+
+    #         results = db.search_semantic(
+    #             enriched_query,
+    #             limit=top_k
+    #         )
+
+    #         st.write("Enriched query:", enriched_query)
+    #         st.write("RAW RESULTS:", results)
+
+    #         st.write("Distance cutoff:", max_dist)
+
+    #         for r in results:
+    #             st.write(
+    #                 r["title"],
+    #                 "distance =",
+    #                 r["distance_score"]
+    #             )
+
+    #         #results = [r for r in results if r["distance_score"] <= max_dist]
+        
+    #     if results:
+    #         st.subheader(f"Found {len(results)} Relevant Matches:")
+    #         for row in results:
+    #             with st.container(border=True):
+    #                 st.markdown(f"### {row['title']}")
+    #                 c1, c2, c3, c4 = st.columns(4)
+    #                 c1.metric("Author", row['author'])
+    #                 c2.metric("Price", row['price'])
+    #                 c3.metric("Stock Status", "In Stock" if row['in_stock'] else "Out of Stock")
+    #                 c4.metric("Vector Distance", f"{row['distance_score']:.4f}")
                     
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Author", author)
-                    c2.metric("Price", price)
-                    c3.metric("Stock Status", "In Stock" if in_stock else "Out of Stock")
-                    c4.metric("Vector Distance", f"{distance:.4f}")
-                    
-                    if url:
-                        st.markdown(f"[View Source Page]({url})")
-        else:
-            st.warning("No sufficiently related products found matching your criteria within the distance threshold. Try lowering the strictness in the sidebar or broadening your query.")
+    #                 if row['url']:
+    #                     st.markdown(f"[View Source Page]({row['url']})")
+    #     else:
+    #         st.warning("No matching products found within the relevance threshold.")
 
 with tab_debug:
     st.header("Database Debug Inspector")
@@ -119,6 +145,7 @@ with tab_debug:
         st.divider()
         df = pd.read_sql_query("SELECT id, title, author, price, in_stock, url FROM products", conn)
         st.dataframe(df, use_container_width=True)
+
         conn.close()
     else:
         st.error(f"Database file not found at: `{DB_PATH}`")
